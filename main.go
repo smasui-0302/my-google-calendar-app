@@ -42,6 +42,7 @@ func main() {
 	e.GET("/", home)
 	e.GET("/auth", startAuth)
 	e.GET("/callback", handleCallback)
+	e.GET("/events", events)
 
 	e.Logger.Fatal(e.Start(":8080"))
 }
@@ -80,8 +81,8 @@ func home(c echo.Context) error {
 	// - c echo.Context: The Echo context containing HTTP request/response data
 	//
 	// Returns:
-	// - error: Returns nil on success, error on failure
-	return c.HTML(http.StatusOK, `<a href="/auth">Login with Google Calendar</a>`)
+	// - error: Returns nil if template renders successfully
+	return c.Render(http.StatusOK, "home.html", nil)
 }
 
 func startAuth(c echo.Context) error {
@@ -115,19 +116,23 @@ func handleCallback(c echo.Context) error {
 	// Operation:
 	// 1. Extracts authorization code from callback URL
 	// 2. Exchanges code for OAuth2 token
-	// 3. Creates Google Calendar API client using token
-	// 4. Retrieves and displays upcoming calendar events
+	// 3. Saves token to cookie
+	// 4. Redirects to events page
 	//
 	// Parameters:
-	// - c echo.Context: The Echo context containing HTTP request/response data
+	// - c echo.Context: The Echo context for handling HTTP request/response
 	//
 	// Returns:
-	// - error: Returns nil on success, error on failure with appropriate HTTP status
+	// - error: Returns nil on successful redirect
+	//         Returns error with status code on failures:
+	//         - StatusOK with redirect if no code
+	//         - StatusInternalServerError if token exchange fails
+	//         - StatusTemporaryRedirect to /events on success
 
 	// extract OAuth2 code
 	code := c.QueryParam("code")
 	if code == "" {
-		return c.String(http.StatusBadRequest, "Code not found")
+		return c.Redirect(http.StatusOK, "/")
 	}
 
 	// get token
@@ -135,13 +140,56 @@ func handleCallback(c echo.Context) error {
 	if err != nil {
 		return c.String(http.StatusInternalServerError, fmt.Sprintf("Token exchange failed: %v", err))
 	}
+
+	// Save token to cookie
+	tokenCookie := &http.Cookie{
+		Name:     "calendar_token",
+		Value:    token.AccessToken,
+		Expires:  token.Expiry,
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteStrictMode,
+	}
+	c.SetCookie(tokenCookie)
+
+	return c.Redirect(http.StatusTemporaryRedirect, "/events")
+}
+
+func events(c echo.Context) error {
+	// events handles the calendar events display endpoint ("/events").
+	//
+	// Operation:
+	// 1. Gets OAuth2 token from cookie
+	// 2. Creates Google Calendar API client and service
+	// 3. Retrieves upcoming events for next month
+	// 4. Formats and displays events in HTML template
+	//
+	// Parameters:
+	// - c echo.Context: The Echo context containing HTTP request/response data
+	//
+	// Returns:
+	// - error: Returns nil on successful render
+	//         Returns redirect on failures:
+	//         - StatusTemporaryRedirect to / if no token or API errors
+	//         Returns render with empty events if no events found
+
+	// Get token from cookie
+	cookie, err := c.Cookie("calendar_token")
+	if err != nil {
+		return c.Redirect(http.StatusTemporaryRedirect, "/")
+	}
+
+	token := &oauth2.Token{
+		AccessToken: cookie.Value,
+		Expiry:      cookie.Expires,
+	}
 	// create client
 	client := oauthCofig.Client(context.Background(), token)
 
 	// create calendar service
 	srv, err := calendar.NewService(context.Background(), option.WithHTTPClient(client))
 	if err != nil {
-		return c.String(http.StatusInternalServerError, fmt.Sprintf("Failed to create calendar client: %v", err))
+		return c.Redirect(http.StatusTemporaryRedirect, "/")
 	}
 
 	// Get events from calendar
@@ -152,12 +200,12 @@ func handleCallback(c echo.Context) error {
 		OrderBy("startTime").
 		Do()
 	if err != nil {
-		return c.String(http.StatusInternalServerError, fmt.Sprintf("Failed to retrieve events: %v", err))
+		return c.Redirect(http.StatusTemporaryRedirect, "/")
 	}
 
 	// No events found
 	if len(events.Items) == 0 {
-		return c.Render(http.StatusOK, "index.html", map[string]interface{}{
+		return c.Render(http.StatusOK, "events.html", map[string]interface{}{
 			"Events": nil,
 		})
 	}
@@ -185,7 +233,7 @@ func handleCallback(c echo.Context) error {
 		})
 	}
 
-	return c.Render(http.StatusOK, "index.html", map[string]interface{}{
+	return c.Render(http.StatusOK, "events.html", map[string]interface{}{
 		"Events": eventsList,
 	})
 }

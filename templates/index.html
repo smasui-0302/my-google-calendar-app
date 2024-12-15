@@ -1,0 +1,49 @@
+<!-- templates/index/html -->
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Calender Events</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .event {
+            border: 1px solid #ddd;
+            margin: 10px 0;
+            padding: 15px;
+            border-radius: 5px;
+        }
+        .event-date {
+            color: #666;
+            font-size: 0.9em;
+        }
+        .event-title {
+            font-size: 1.2em;
+            margin: 5px 0;
+        }
+        .no-events {
+            text-align: center;
+            color: #666;
+            padding: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Future Events</h1>
+    {{if .Events}}
+        {{range .Events}}
+        <div class="event">
+            <div class="event-date">{{.Date}}</div>
+            <div class="event-title">{{.Summary}}</div>
+        </div>
+        {{end}}
+    {{else}}
+        <div class="no-events">
+            No Events Scheduled
+        </div>
+    {{end}}
+</body>
+</html>

@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"html/template"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -19,9 +21,18 @@ import (
 
 var oauthCofig *oauth2.Config
 
+type Event struct {
+	Date    string
+	Summary string
+}
+
 func main() {
 
 	e := echo.New()
+
+	e.Renderer = &TemplateRenderer{
+		templates: template.Must(template.ParseGlob("templates/*html")),
+	}
 
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
@@ -90,6 +101,14 @@ func startAuth(c echo.Context) error {
 	return c.Redirect(http.StatusTemporaryRedirect, url)
 }
 
+type TemplateRenderer struct {
+	templates *template.Template
+}
+
+func (t *TemplateRenderer) Render(w io.Writer, name string, data interface{}, c echo.Context) error {
+	return t.templates.ExecuteTemplate(w, name, data)
+}
+
 func handleCallback(c echo.Context) error {
 	// handleCallback processes the OAuth2 callback after user authorization.
 	//
@@ -138,19 +157,35 @@ func handleCallback(c echo.Context) error {
 
 	// No events found
 	if len(events.Items) == 0 {
-		return c.String(http.StatusOK, "No upcoming events found")
+		return c.Render(http.StatusOK, "index.html", map[string]interface{}{
+			"Events": nil,
+		})
 	}
 
-	// Format and display events
-	var output strings.Builder
+	// Format events data
+	var eventsList []Event
 	for _, item := range events.Items {
 		date := item.Start.DateTime
 		if date == "" {
 			date = item.Start.Date
 		}
-		fmt.Fprintf(&output, "%v: %v\n", date, item.Summary)
+
+		var formattedDate string
+		if strings.Contains(date, "T") { // DateTime format
+			parsedDate, _ := time.Parse(time.RFC3339, date)
+			formattedDate = parsedDate.Format("2006/01/02 15:01")
+		} else { //Date format
+			parsedDate, _ := time.Parse("2006-01-02", date)
+			formattedDate = parsedDate.Format("2006/01/02")
+		}
+
+		eventsList = append(eventsList, Event{
+			Date:    formattedDate,
+			Summary: item.Summary,
+		})
 	}
 
-	return c.String(http.StatusOK, output.String())
-
+	return c.Render(http.StatusOK, "index.html", map[string]interface{}{
+		"Events": eventsList,
+	})
 }

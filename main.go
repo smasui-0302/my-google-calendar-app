@@ -36,6 +36,16 @@ func main() {
 }
 
 func initOAuthConfig() {
+	// initOAuthConfig initializes OAuth2 configuration for Google Calendar API.
+	//
+	// Operation:
+	// 1. Reads credentials from .credentials/calendar_credentials.json
+	// 2. Generates OAuth2 configuration from credentials
+	// 3. Stores configuration in global variable oauthConfig
+	//
+	// Parameters: none
+	// Returns: none
+
 	credentials, err := os.ReadFile(".credentials/calendar_credentials.json")
 	if err != nil {
 		log.Fatalf("Failed to read credentials fle : %v", err)
@@ -50,15 +60,52 @@ func initOAuthConfig() {
 }
 
 func home(c echo.Context) error {
+	// home handles the root endpoint ("/") request.
+	//
+	// Operation:
+	// 1. Displays a simple HTML page with Google Calendar login link
+	//
+	// Parameters:
+	// - c echo.Context: The Echo context containing HTTP request/response data
+	//
+	// Returns:
+	// - error: Returns nil on success, error on failure
 	return c.HTML(http.StatusOK, `<a href="/auth">Login with Google Calendar</a>`)
 }
 
 func startAuth(c echo.Context) error {
+	// startAuth handles the OAuth2 authentication initiation.
+	//
+	// Operation:
+	// 1. Generates OAuth2 authorization URL with offline access
+	// 2. Redirects user to Google's consent page
+	//
+	// Parameters:
+	// - c echo.Context: The Echo context containing HTTP request/response data
+	//
+	// Returns:
+	// - error: Returns nil on success, error on failure
+
 	url := oauthCofig.AuthCodeURL("start-token", oauth2.AccessTypeOffline)
 	return c.Redirect(http.StatusTemporaryRedirect, url)
 }
 
 func handleCallback(c echo.Context) error {
+	// handleCallback processes the OAuth2 callback after user authorization.
+	//
+	// Operation:
+	// 1. Extracts authorization code from callback URL
+	// 2. Exchanges code for OAuth2 token
+	// 3. Creates Google Calendar API client using token
+	// 4. Retrieves and displays upcoming calendar events
+	//
+	// Parameters:
+	// - c echo.Context: The Echo context containing HTTP request/response data
+	//
+	// Returns:
+	// - error: Returns nil on success, error on failure with appropriate HTTP status
+
+	// extract OAuth2 code
 	code := c.QueryParam("code")
 	if code == "" {
 		return c.String(http.StatusBadRequest, "Code not found")
